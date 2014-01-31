@@ -266,10 +266,23 @@ class VirtualMachine(object):
         val = self.read_mem(b)
         self.write_reg(a, val)
 
-    def op_wmem(self):
+    def op_wmem(self, a, b):
         '''
+        Write the value in <b> into memory address <a>
         '''
-        pass
+        val = self.value(b)
+        self.write_mem(a, val)
+
+    def op_ret(self):
+        '''
+        Remove the top element from the stack and jump to it. Halt on empty
+        stack
+        '''
+        try:
+            val = self.stack.pop()
+            self.op_jmp(val)
+        except IndexError:
+            self.op_halt()
 
 
 if __name__ == '__main__':
