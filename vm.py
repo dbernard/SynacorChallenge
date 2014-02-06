@@ -284,6 +284,21 @@ class VirtualMachine(object):
         except IndexError:
             self.op_halt()
 
+    def op_in(self, a):
+        '''
+        Read a character from the terminal and write its ascii code to <a>. It
+        can be assumed that once input starts, it will continue until a new line
+        is encountered. This means you can safely real whole lines from the
+        keyboard and trust that they will be fully read.
+        '''
+        while True:
+            try:
+                c = sys.stdin.read(1)
+                break
+            except IOError:
+                pass
+        self.write_reg(a, ord(c))
+
 
 if __name__ == '__main__':
     vm = VirtualMachine()
