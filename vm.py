@@ -51,6 +51,16 @@ class VirtualMachine(object):
         image = struct.unpack('%dH' % (len(image) >> 1), image)
         self.mem[address:address + len(image)] = array('H', image)
 
+    def regs(self):
+        return [('r%d' % i, v) for i, v in enumerate(self.reg)]
+
+    def peek(self, address=None, length=None):
+        if address is None:
+            address = 0
+        if length is None:
+            return self.mem[address:]
+        return self.mem[address:address+length]
+
     def fetch_instruction_mem(self, mem, pc):
         op = mem[pc]
         pc  = (pc + 1) % 32768
