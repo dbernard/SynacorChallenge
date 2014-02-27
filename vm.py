@@ -107,7 +107,6 @@ class VirtualMachine(object):
         '''
         Convert r into a register and write [value] to that register
         '''
-        # Question for szak: does <x> syntax mean its a register on arch sheet?
         self.reg[r - 32768] = self.value(value)
 
     def read_mem(self, addr):

@@ -5,14 +5,6 @@ import string
 
 from StringIO import StringIO
 
-# TODO:
-#   1. Convert "r0" - "r7" to register value
-#   2. Convert "pc" to register value
-#   3. Convert forms like "0xAB" to their hex values
-#   4. Convert forms like "*AB" to read values from memory location
-#       ...Anything else, just return the string
-# (Inputs are strings, outputs are numbers or strings)
-
 
 def chunks(seq, size):
   d, m = divmod(len(seq), size)
@@ -53,6 +45,10 @@ def print_mem(start_addr, mem):
         start_addr += len(chunk)
 
 
+def is_hex(s):
+    return all(c in '0123456789abcdefABCDEF' for c in s)
+
+
 class Debugger(cmd.Cmd):
     '''
     Need:
@@ -68,7 +64,7 @@ class Debugger(cmd.Cmd):
 
     def __init__(self, filename=None):
         cmd.Cmd.__init__(self)
-        # Could also use: super(Debugger, self).__init__() 
+        # Could also use: super(Debugger, self).__init__()
         # (Method Resolution Order - "super" keeps state, init objects left to
         # right BUT all must call super)
 
@@ -76,13 +72,44 @@ class Debugger(cmd.Cmd):
         if filename:
             self.vm.load_image(filename)
 
+    def try_convert(self, arg):
+        if arg in ('r0', 'r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7'):
+            return self.convert_reg(arg)
+        elif arg == 'pc':
+            return self.vm.pc
+        elif arg.startswith('0x') and is_hex(arg[2:]):
+            return self.convert_hex(arg[2:])
+        elif arg.startswith('*') and is_hex(arg[1:]):
+            return self.convert_mem(arg[1:])
+        elif all(c in string.digits for c in arg):
+            return int(arg)
+        else:
+            return arg
+
+    def convert_reg(self, arg):
+        reg = int(arg[1])
+        converted_reg = reg + 32768
+        return self.vm.read_reg(converted_reg)
+
+    def convert_hex(self, arg):
+        converted_hex = int(arg, 16)
+        return converted_hex
+
+    def convert_mem(self, arg):
+        val = self.vm.read_mem(int(arg, 16))
+
+    def parse_args(self, args):
+        # Split arg into list without whitespace
+        # Pass each arg to try_convert
+        pass
+
     def do_regs(self, args):
         regs = self.vm.regs()
         pc = self.vm.pc
 
         # print regs here
-        for i, v in enumerate(regs):
-            pass
+        #for i, v in enumerate(regs):
+        #    pass
         print "Register Contents"
         print "-----------------"
         for entry in regs:
