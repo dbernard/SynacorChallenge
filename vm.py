@@ -1,4 +1,5 @@
 from array import array
+from txmem import TransactionalMemory
 import itertools
 import struct
 import sys
@@ -39,8 +40,7 @@ opcodes = {
 class VirtualMachine(object):
 
     def __init__(self):
-        self.mem = array('H', itertools.repeat(0, 0x8000))
-        self.reg = array('H', itertools.repeat(0, 8))
+        self.txmem = TransactionalMemory(0x8008)
         self.stack = []
 
         self.pc = 0
@@ -49,17 +49,19 @@ class VirtualMachine(object):
         with open(filename, 'rb') as f:
             image = f.read()
         image = struct.unpack('%dH' % (len(image) >> 1), image)
-        self.mem[address:address + len(image)] = array('H', image)
+        for i in xrange(len(image)):
+            self.txmem[address + i] = image[i]
+        self.txmem.commit()
 
     def regs(self):
-        return [('r%d' % i, v) for i, v in enumerate(self.reg)]
+        return [('r%d' % i, v) for i, v in enumerate(self.txmem[32768:])]
 
     def peek(self, address=None, length=None):
         if address is None:
             address = 0
         if length is None:
-            return self.mem[address:]
-        return self.mem[address:address+length]
+            return self.txmem[address:]
+        return self.txmem[address:address+length]
 
     def fetch_instruction_mem(self, mem, pc):
         op = mem[pc]
@@ -81,14 +83,28 @@ class VirtualMachine(object):
         return op, args, pc
 
     def fetch_instruction(self,):
-        op, args, pc = self.fetch_instruction_mem(self.mem, self.pc)
+        op, args, pc = self.fetch_instruction_mem(self.txmem, self.pc)
         self.pc = pc
         return op, args, pc
 
     def step(self):
-        op, args, pc = self.fetch_instruction()
-        fn = getattr(self, 'op_' + opcodes[op][0])
-        fn(*args)
+        old_pc = self.pc
+        try:
+            op, args, pc = self.fetch_instruction()
+            fn = getattr(self, 'op_' + opcodes[op][0])
+            fn(*args)
+            self.txmem.commit()
+        except BaseException as e:
+            while True:
+                try:
+                    self.mem.rollback()
+                    self.pc = old_pc
+                    break
+                except:
+                    pass
+
+            raise e
+
 
     def execute(self):
         try:
@@ -101,24 +117,24 @@ class VirtualMachine(object):
         '''
         Convert r into a register and return the contents of that register
         '''
-        return self.reg[r - 32768]
+        return self.txmem[r]
 
     def write_reg(self, r, value):
         '''
         Convert r into a register and write [value] to that register
         '''
-        self.reg[r - 32768] = self.value(value)
+        self.txmem[r] = self.value(value)
 
     def read_mem(self, addr):
         try:
-            return self.mem[self.value(addr)]
+            return self.txmem.mem[self.value(addr)]
         except IndexError:
             print 'Halting at read_mem...'
             self.op_halt()
 
     def write_mem(self, addr, value):
         try:
-            self.mem[self.value(addr)] = self.value(value)
+            self.txmem.mem[self.value(addr)] = self.value(value)
         except IndexError:
             print 'Halting at write_mem...'
             self.op_halt()
