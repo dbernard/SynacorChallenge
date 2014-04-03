@@ -83,6 +83,8 @@ class Debugger(cmd.Cmd):
             return self.convert_mem(arg[1:])
         elif all(c in string.digits for c in arg):
             return int(arg)
+        # regs = 32768 +
+        # regs = 32768 +
         else:
             return arg
 
@@ -99,9 +101,14 @@ class Debugger(cmd.Cmd):
         val = self.vm.read_mem(int(arg, 16))
 
     def parse_args(self, args):
-        # Split arg into list without whitespace
-        # Pass each arg to try_convert
-        pass
+        # re.split(r'\s+', (string).strip())
+        args = args.split()
+        converted_args = []
+
+        for arg in args:
+            converted_args.append(self.try_convert(arg))
+
+        return converted_args
 
     def do_regs(self, args):
         regs = self.vm.regs()
