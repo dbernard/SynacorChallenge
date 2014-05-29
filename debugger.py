@@ -2,6 +2,7 @@ import vm
 import cmd
 import sys
 import string
+import pickle
 
 from StringIO import StringIO
 
@@ -75,6 +76,8 @@ class Debugger(cmd.Cmd):
     def try_convert(self, arg):
         if arg in ('r0', 'r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7'):
             return self.convert_reg(arg)
+        elif arg in ('@r0', '@r1', '@r2', '@r3', '@r4', '@r5', '@r6', '@r7'):
+            return self.convert_reg_read(arg[1:])
         elif arg == 'pc':
             return self.vm.pc
         elif arg.startswith('0x') and is_hex(arg[2:]):
@@ -83,15 +86,17 @@ class Debugger(cmd.Cmd):
             return self.convert_mem(arg[1:])
         elif all(c in string.digits for c in arg):
             return int(arg)
-        # regs = 32768 +
-        # regs = 32768 +
         else:
             return arg
 
     def convert_reg(self, arg):
         reg = int(arg[1])
         converted_reg = reg + 32768
-        return self.vm.read_reg(converted_reg)
+        return converted_reg
+
+    def convert_reg_read(self, arg):
+        reg = self.convert_reg(arg)
+        return self.vm.read_reg(reg)
 
     def convert_hex(self, arg):
         converted_hex = int(arg, 16)
@@ -109,6 +114,112 @@ class Debugger(cmd.Cmd):
             converted_args.append(self.try_convert(arg))
 
         return converted_args
+
+    def convert_op_arg(self, arg):
+        if arg >= 32768:
+            return 'r%d' % (arg - 32768,)
+        return str(arg)
+
+    def disassemble_op(self, op, args, compact=False):
+        instruction = ['%04X' % op] + ['%04X' % arg for arg in args]
+        instruction = ' '.join(instruction)
+
+        if compact:
+            s = "%s  %s %s" % (instruction, vm.opcodes[op][0],
+                    ' '.join(self.convert_op_arg(x) for x in args))
+        else:
+            s = "%-23s %s %s" % (instruction, vm.opcodes[op][0],
+                    ' '.join(self.convert_op_arg(x) for x in args))
+
+        # Show the ascii character for the out opcode
+        if op == 19 and args[0] < 256:
+            if compact:
+                s += '  # %r' % (chr(args[0]),)
+            else:
+                s += '\t# %r' % (chr(args[0]),)
+
+        return s
+
+    def get_instructions(self, mem):
+        while mem:
+            try:
+                op, args, pc = self.vm.fetch_instruction_mem(mem, 0)
+
+                # Since fetch_instruction_mem believes our current pc is 0,
+                # the returned pc is actually the number of words in the
+                # instruction.  Let's return it so that the disassembler can
+                # keep track of the current address while disassembling regions.
+                yield op, args, pc
+                mem = mem[pc:]
+            except vm.VmInvalidInstruction:
+                break
+        return
+
+    def do_disassemble(self, args):
+        '''Disassemble a section of memory.'''
+        args = self.parse_args(args)
+        if len(args) > 0:
+            start_addr = args[0]
+        else:
+            start_addr = 0
+
+        if len(args) > 1:
+            length = args[1]
+        else:
+            length = None
+
+        mem = self.vm.peek(start_addr, length)
+        addr = start_addr
+        for op, args, size in self.get_instructions(mem):
+            print '   %5d:   %s' % (addr, self.disassemble_op(op, args))
+            addr += size
+
+    do_d = d_dis = do_disassemble
+
+    def do_save(self, args):
+        # NOTE: I am aware this is very sloppy saving/loading... Was a quick
+        # implementation to get something working.
+        mem_file = 'mem.txt'
+        pc_file = 'pc.txt'
+        stack_file = 'stack.txt'
+
+        with open(mem_file, 'wb') as file:
+            pickle.dump(self.vm.txmem, file)
+
+        with open(pc_file, 'wb') as file:
+            pickle.dump(self.vm.pc, file)
+
+        with open(stack_file, 'wb') as file:
+            pickle.dump(self.vm.stack, file)
+
+    def do_load(self, args):
+        mem_file = 'mem.txt'
+        pc_file = 'pc.txt'
+        stack_file = 'stack.txt'
+
+        with open(mem_file, 'rb') as file:
+            self.vm.txmem = pickle.load(file)
+
+        with open(pc_file, 'rb') as file:
+            self.vm.pc = pickle.load(file)
+
+        with open(stack_file, 'rb') as file:
+            self.vm.stack = pickle.load(file)
+
+    def do_poke(self, args):
+        args = self.parse_args(args)
+        reg = args[0]
+        val = args[1]
+
+        self.vm.write_reg(reg, val)
+        self.vm.txmem.commit()
+
+    def do_backtrace(self, args):
+        bt = self.vm.backtrace
+        for entry in bt:
+            print '%s -> %s' % (entry[0], entry[1])
+
+    do_bt = do_backtrace
 
     def do_regs(self, args):
         regs = self.vm.regs()

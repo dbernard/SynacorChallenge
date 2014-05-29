@@ -42,6 +42,7 @@ class VirtualMachine(object):
     def __init__(self):
         self.txmem = TransactionalMemory(0x8008)
         self.stack = []
+        self.backtrace = []
 
         self.pc = 0
 
@@ -267,6 +268,7 @@ class VirtualMachine(object):
         '''
         Write the address of the next instruction on the stack and jump to <a>
         '''
+        self.backtrace.append([self.pc, a])
         self.stack.append(self.pc)
         self.op_jmp(a)
 
@@ -305,6 +307,7 @@ class VirtualMachine(object):
         '''
         try:
             val = self.stack.pop()
+            self.backtrace.append(['return', val])
             self.op_jmp(val)
         except IndexError:
             self.op_halt()
